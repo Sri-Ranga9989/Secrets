@@ -13,6 +13,7 @@ const port = 3000;
 const saltRounds = 10;
 env.config();
 
+// Session configuration
 app.use(
   session({
     secret: process.env.SESSION_SECRET,
@@ -20,12 +21,14 @@ app.use(
     saveUninitialized: true,
   })
 );
+
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
 app.use(passport.initialize());
 app.use(passport.session());
 
+// PostgreSQL database connection
 const db = new pg.Client({
   user: process.env.PG_USER,
   host: process.env.PG_HOST,
@@ -35,18 +38,22 @@ const db = new pg.Client({
 });
 db.connect();
 
+// Home route
 app.get("/", (req, res) => {
   res.render("home.ejs");
 });
 
+// Login page
 app.get("/login", (req, res) => {
   res.render("login.ejs");
 });
 
+// Register page
 app.get("/register", (req, res) => {
   res.render("register.ejs");
 });
 
+// Logout and end session
 app.get("/logout", (req, res) => {
   req.logout(function (err) {
     if (err) {
@@ -56,12 +63,11 @@ app.get("/logout", (req, res) => {
   });
 });
 
+// Secrets page, only accessible if authenticated
 app.get("/secrets", async (req, res) => {
   if (req.isAuthenticated()) {
-    //TODO: Update this to pull in the user secret to render in secrets.ejs
     try {
       const result =  await db.query("SELECT secret FROM  users  WHERE email = $1", [req.user.email]);
-      console.log(result );
       const secret = result.rows[0].secret;
       if (secret) {
         res.render("secrets.ejs", {secret : secret});
@@ -76,8 +82,7 @@ app.get("/secrets", async (req, res) => {
   }
 });
 
-//TODO: Add a get route for the submit button
-
+// Submit secret page, only accessible if authenticated
 app.get("/submit", (req, res)=>{
   if(req.isAuthenticated()){
     res.render("submit.ejs")
@@ -85,8 +90,8 @@ app.get("/submit", (req, res)=>{
     res.render("login.ejs");
   }
 })
-//Think about how the logic should work with authentication.
 
+// Google OAuth authentication
 app.get(
   "/auth/google",
   passport.authenticate("google", {
@@ -94,6 +99,7 @@ app.get(
   })
 );
 
+// Google OAuth callback
 app.get(
   "/auth/google/secrets",
   passport.authenticate("google", {
@@ -102,6 +108,7 @@ app.get(
   })
 );
 
+// Local login authentication
 app.post(
   "/login",
   passport.authenticate("local", {
@@ -110,6 +117,7 @@ app.post(
   })
 );
 
+// Register new user
 app.post("/register", async (req, res) => {
   const email = req.body.username;
   const password = req.body.password;
@@ -132,7 +140,6 @@ app.post("/register", async (req, res) => {
           );
           const user = result.rows[0];
           req.login(user, (err) => {
-            console.log("success");
             res.redirect("/secrets");
           });
         }
@@ -143,20 +150,18 @@ app.post("/register", async (req, res) => {
   }
 });
 
-//TODO: Create the post route for submit.
-//Handle the submitted data and add it to the database
-
+// Handle secret submission and update user record
 app.post("/submit", async (req, res)=>{
   const secret = req.body.secret;
-  console.log(req.user); //provided by the passport to get user information
-try {
-  await db.query("UPDATE users SET secret = $1 WHERE email = $2", [secret, req.user.email,]);
-  res.redirect("/secrets")
-} catch (error) {
-  console.log(error);
-}
+  try {
+    await db.query("UPDATE users SET secret = $1 WHERE email = $2", [secret, req.user.email]);
+    res.redirect("/secrets")
+  } catch (error) {
+    console.log(error);
+  }
 })
 
+// Local authentication strategy
 passport.use(
   "local",
   new Strategy(async function verify(username, password, cb) {
@@ -188,6 +193,7 @@ passport.use(
   })
 );
 
+// Google OAuth strategy
 passport.use(
   "google",
   new GoogleStrategy(
@@ -199,7 +205,6 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, cb) => {
       try {
-        console.log(profile);
         const result = await db.query("SELECT * FROM users WHERE email = $1", [
           profile.email,
         ]);
@@ -218,14 +223,18 @@ passport.use(
     }
   )
 );
+
+// Serialize user for session
 passport.serializeUser((user, cb) => {
   cb(null, user);
 });
 
+// Deserialize user from session
 passport.deserializeUser((user, cb) => {
   cb(null, user);
 });
 
+// Start the server
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
